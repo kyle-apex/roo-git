@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+/// <reference path="./vscode.d.ts" />
 
 interface GitHubIssue {
     number: number;
@@ -30,10 +31,10 @@ const GitHubIssuesViewer: React.FC = () => {
     const [selectedIssue, setSelectedIssue] = useState<GitHubIssue | null>(null);
 
     const handleInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-        const target = e.target as HTMLInputElement;
+        const { name, value } = e.target;
         setFormData(prev => ({
             ...prev,
-            [target.name]: target.value
+            [name]: value
         }));
     };
 
