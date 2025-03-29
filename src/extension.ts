@@ -3,6 +3,13 @@ import * as path from "path";
 import * as fs from "fs";
 import { exec } from "child_process";
 import { promisify } from "util";
+import {
+  claimIssue,
+  GitHubIssue,
+  ClaimIssueResult,
+  findReadyIssues,
+  isGitRepository,
+} from "./utils/github";
 
 const execAsync = promisify(exec);
 
@@ -46,10 +53,39 @@ class RooGitViewProvider implements vscode.WebviewViewProvider {
   private _view?: vscode.WebviewView;
   private _extensionUri: vscode.Uri;
   private _authCheckInterval?: NodeJS.Timeout;
+  private _issuePollingInterval?: NodeJS.Timeout;
   private _isAuthenticated: boolean = false;
+  private _isPollingEnabled: boolean = true;
+  private _pollingIntervalSeconds: number = 10;
+  private _repository: string = "";
 
   constructor(extensionUri: vscode.Uri) {
     this._extensionUri = extensionUri;
+
+    // Load configuration
+    this._loadConfiguration();
+
+    // Listen for configuration changes
+    vscode.workspace.onDidChangeConfiguration((e) => {
+      if (
+        e.affectsConfiguration("roo-git.issuePollingIntervalSeconds") ||
+        e.affectsConfiguration("roo-git.enableIssuePolling") ||
+        e.affectsConfiguration("roo-git.repository")
+      ) {
+        this._loadConfiguration();
+        this._restartIssuePolling();
+      }
+    });
+  }
+
+  private _loadConfiguration(): void {
+    const config = vscode.workspace.getConfiguration("roo-git");
+    this._pollingIntervalSeconds = config.get(
+      "issuePollingIntervalSeconds",
+      10
+    );
+    this._isPollingEnabled = config.get("enableIssuePolling", true);
+    this._repository = config.get("repository", "");
   }
 
   public resolveWebviewView(
@@ -72,7 +108,7 @@ class RooGitViewProvider implements vscode.WebviewViewProvider {
     webviewView.webview.html = this._getHtmlForWebview(webviewView.webview);
 
     // Handle messages from the webview
-    webviewView.webview.onDidReceiveMessage((message) => {
+    webviewView.webview.onDidReceiveMessage(async (message) => {
       switch (message.command) {
         case "alert":
           vscode.window.showInformationMessage(message.text);
@@ -80,11 +116,57 @@ class RooGitViewProvider implements vscode.WebviewViewProvider {
         case "checkAuth":
           this._checkAndUpdateAuthStatus();
           return;
+        case "claimIssue":
+          try {
+            const issue = message.issue as GitHubIssue;
+            const result = await claimIssue(issue, this._repository);
+
+            // Send the result back to the webview
+            if (this._view) {
+              this._view.webview.postMessage({
+                command: "claimIssueResult",
+                result,
+              });
+            }
+
+            // Show a notification based on the result
+            if (result.success) {
+              vscode.window.showInformationMessage(
+                `Successfully claimed issue #${issue.number} and created branch '${result.branchName}'`
+              );
+            } else {
+              vscode.window.showErrorMessage(
+                `Failed to claim issue: ${result.error}`
+              );
+            }
+          } catch (error) {
+            vscode.window.showErrorMessage(
+              `Error claiming issue: ${
+                error instanceof Error ? error.message : String(error)
+              }`
+            );
+
+            // Send error back to webview
+            if (this._view) {
+              this._view.webview.postMessage({
+                command: "claimIssueResult",
+                result: {
+                  success: false,
+                  branchName: "",
+                  error: String(error),
+                },
+              });
+            }
+          }
+          return;
       }
     });
 
     // Start polling for GitHub authentication status
     this._startAuthPolling();
+
+    // Start polling for GitHub issues
+    this._startIssuePolling();
   }
 
   private async _checkAndUpdateAuthStatus(): Promise<void> {
@@ -121,6 +203,125 @@ class RooGitViewProvider implements vscode.WebviewViewProvider {
   public dispose(): void {
     if (this._authCheckInterval) {
       clearInterval(this._authCheckInterval);
+    }
+
+    if (this._issuePollingInterval) {
+      clearInterval(this._issuePollingInterval);
+    }
+  }
+
+  /**
+   * Starts polling for GitHub issues with "Ready for Plan" label
+   */
+  private _startIssuePolling(): void {
+    // Clear any existing interval
+    if (this._issuePollingInterval) {
+      clearInterval(this._issuePollingInterval);
+    }
+
+    // Only start polling if enabled
+    if (!this._isPollingEnabled) {
+      console.log("Issue polling is disabled");
+      return;
+    }
+
+    console.log(
+      `Starting issue polling with interval: ${this._pollingIntervalSeconds} seconds`
+    );
+
+    // Check immediately
+    this._checkForReadyIssues();
+
+    // Then check at the configured interval
+    this._issuePollingInterval = setInterval(() => {
+      this._checkForReadyIssues();
+    }, this._pollingIntervalSeconds * 1000);
+  }
+
+  /**
+   * Restarts the issue polling with updated configuration
+   */
+  private _restartIssuePolling(): void {
+    console.log("Restarting issue polling with updated configuration");
+    this._startIssuePolling();
+  }
+
+  /**
+   * Checks for GitHub issues with "Ready for Plan" label and without "Claimed by Agent" label
+   */
+  private async _checkForReadyIssues(): Promise<void> {
+    try {
+      // Only proceed if authenticated
+      if (!this._isAuthenticated) {
+        return;
+      }
+
+      // If no repository is configured, check if we're in a git repository
+      if (!this._repository) {
+        const inGitRepo = await isGitRepository();
+        if (!inGitRepo) {
+          console.error(
+            "Not in a git repository and no repository configured in settings. " +
+              "Please configure the repository in VS Code settings (roo-git.repository)."
+          );
+
+          // Notify the webview if it's open
+          if (this._view) {
+            this._view.webview.postMessage({
+              command: "error",
+              message:
+                "Not in a git repository. Please configure the repository in settings.",
+            });
+          }
+
+          return;
+        }
+      }
+
+      const issues = await findReadyIssues(this._repository);
+
+      if (issues.length > 0) {
+        console.log(`Found ${issues.length} ready issues`);
+
+        // Process the first issue
+        const issue = issues[0];
+        console.log(`Processing issue #${issue.number}: ${issue.title}`);
+
+        // Claim the issue
+        await this._processReadyIssue(issue);
+      }
+    } catch (error) {
+      console.error("Error checking for ready issues:", error);
+    }
+  }
+
+  /**
+   * Processes a ready issue by claiming it
+   * @param issue The issue to process
+   */
+  private async _processReadyIssue(issue: GitHubIssue): Promise<void> {
+    try {
+      console.log(`Claiming issue #${issue.number}`);
+      const result = await claimIssue(issue, this._repository);
+
+      if (result.success) {
+        vscode.window.showInformationMessage(
+          `Successfully claimed issue #${issue.number} and created branch '${result.branchName}'`
+        );
+
+        // Notify the webview if it's open
+        if (this._view) {
+          this._view.webview.postMessage({
+            command: "issueClaimed",
+            issue,
+            result,
+          });
+        }
+      } else {
+        console.error(`Failed to claim issue #${issue.number}:`, result.error);
+      }
+    } catch (error) {
+      console.error(`Error processing issue #${issue.number}:`, error);
     }
   }
 

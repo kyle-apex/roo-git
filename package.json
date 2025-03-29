@@ -35,7 +35,28 @@
         "command": "roo-git.showWebview",
         "title": "Show Roo Git"
       }
-    ]
+    ],
+    "configuration": {
+      "title": "Roo Git",
+      "properties": {
+        "roo-git.issuePollingIntervalSeconds": {
+          "type": "number",
+          "default": 10,
+          "minimum": 5,
+          "description": "Interval in seconds for polling GitHub issues with 'Ready for Plan' label"
+        },
+        "roo-git.enableIssuePolling": {
+          "type": "boolean",
+          "default": true,
+          "description": "Enable automatic polling for GitHub issues with 'Ready for Plan' label"
+        },
+        "roo-git.repository": {
+          "type": "string",
+          "default": "",
+          "description": "GitHub repository in the format 'owner/repo' (e.g., 'microsoft/vscode'). If not specified, commands will try to determine the repository from the current directory."
+        }
+      }
+    }
   },
   "scripts": {
     "vscode:prepublish": "npm run compile",

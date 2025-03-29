@@ -1,6 +1,20 @@
 import * as React from "react";
 import "./App.css";
 
+// Interface for GitHub issue
+interface GitHubIssue {
+  number: number;
+  title: string;
+  url: string;
+}
+
+// Interface for claim issue result
+interface ClaimIssueResult {
+  success: boolean;
+  branchName: string;
+  error?: string;
+}
+
 interface AppProps {
   vscode: {
     postMessage: (message: any) => void;
@@ -13,6 +27,12 @@ const App: React.FC<AppProps> = ({ vscode }) => {
   const [isAuthenticated, setIsAuthenticated] = React.useState<boolean | null>(
     null
   );
+  const [issueNumber, setIssueNumber] = React.useState<string>("");
+  const [issueTitle, setIssueTitle] = React.useState<string>("");
+  const [isLoading, setIsLoading] = React.useState<boolean>(false);
+  const [claimResult, setClaimResult] = React.useState<ClaimIssueResult | null>(
+    null
+  );
 
   // Listen for messages from the extension
   React.useEffect(() => {
@@ -22,6 +42,10 @@ const App: React.FC<AppProps> = ({ vscode }) => {
       switch (message.command) {
         case "authStatus":
           setIsAuthenticated(message.isAuthenticated);
+          break;
+        case "claimIssueResult":
+          setClaimResult(message.result);
+          setIsLoading(false);
           break;
       }
     };
@@ -35,6 +59,32 @@ const App: React.FC<AppProps> = ({ vscode }) => {
       window.removeEventListener("message", messageListener);
     };
   }, [vscode]);
+
+  // Handle form submission
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+
+    if (!issueNumber || !issueTitle) {
+      return;
+    }
+
+    // Reset previous result
+    setClaimResult(null);
+    setIsLoading(true);
+
+    // Create issue object
+    const issue: GitHubIssue = {
+      number: parseInt(issueNumber, 10),
+      title: issueTitle,
+      url: `https://github.com/user/repo/issues/${issueNumber}`, // This is a placeholder URL
+    };
+
+    // Send message to extension to claim the issue
+    vscode.postMessage({
+      command: "claimIssue",
+      issue,
+    });
+  };
 
   // Loading state while checking authentication
   if (isAuthenticated === null) {
@@ -89,7 +139,65 @@ const App: React.FC<AppProps> = ({ vscode }) => {
       </header>
       <main className="app-content">
         <p>✅ Successfully authenticated with GitHub!</p>
-        <p>Git operations made easy!</p>
+
+        <div className="claim-issue-section">
+          <h2>Claim an Issue</h2>
+          <form onSubmit={handleSubmit}>
+            <div className="form-group">
+              <label htmlFor="issueNumber">Issue Number:</label>
+              <input
+                type="number"
+                id="issueNumber"
+                value={issueNumber}
+                onChange={(e) => setIssueNumber(e.target.value)}
+                required
+                disabled={isLoading}
+              />
+            </div>
+
+            <div className="form-group">
+              <label htmlFor="issueTitle">Issue Title:</label>
+              <input
+                type="text"
+                id="issueTitle"
+                value={issueTitle}
+                onChange={(e) => setIssueTitle(e.target.value)}
+                required
+                disabled={isLoading}
+              />
+            </div>
+
+            <button type="submit" disabled={isLoading}>
+              {isLoading ? "Claiming..." : "Claim Issue"}
+            </button>
+          </form>
+
+          {claimResult && (
+            <div
+              className={`claim-result ${
+                claimResult.success ? "success" : "error"
+              }`}
+            >
+              {claimResult.success ? (
+                <div>
+                  <p>✅ Successfully claimed issue #{issueNumber}!</p>
+                  <p>
+                    Created branch: <code>{claimResult.branchName}</code>
+                  </p>
+                  <p>Added labels:</p>
+                  <ul>
+                    <li>Claimed by Agent</li>
+                    <li>Branch: {claimResult.branchName}</li>
+                  </ul>
+                </div>
+              ) : (
+                <div>
+                  <p>❌ Failed to claim issue: {claimResult.error}</p>
+                </div>
+              )}
+            </div>
+          )}
+        </div>
       </main>
     </div>
   );
