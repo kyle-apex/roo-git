@@ -1,21 +1,59 @@
-# Chat Tutorial
+# VS Code React Webview Extension
 
-Visual Studio Code's Copilot Chat architecture enables extension authors to integrate with the GitHub Copilot Chat experience. A chat extension is a VS Code extension that uses the Chat extension API by contributing a Chat participant. Chat participants are domain experts that can answer user queries within a specific domain.
+A Visual Studio Code extension that demonstrates how to create a webview using React and TypeScript.
 
-This GitHub Copilot Extension sample shows:
+## Features
 
-- How to contribute a chat participant to the GitHub Copilot Chat view.
+- Creates a webview panel with React UI
+- Demonstrates communication between the extension and webview
+- Uses TypeScript for type safety
+- Styled with CSS using VS Code's theme variables
 
-![A screenshot of the running extension, showing the @tutor /exercise command](./demo.png)
+## Development
 
-Documentation can be found here:
-- https://code.visualstudio.com/api/extension-guides/chat
-- https://code.visualstudio.com/api/extension-guides/chat-tutorial
+### Prerequisites
 
-## Running the Sample
+- Node.js
+- npm or yarn
+- Visual Studio Code
 
-- Run `npm install` in terminal to install dependencies
-- Run the `Run Extension` target in the Debug View. This will:
-	- Start a task `npm: watch` to compile the code
-	- Run the extension in a new VS Code window
-	- You will see the @tutor chat participant in the GitHub Copilot Chat view
+### Setup
+
+1. Clone the repository
+2. Run `npm install` to install dependencies
+3. Run `npm run compile` to build the extension and webview
+
+### Running the Extension
+
+1. Press F5 to open a new window with your extension loaded
+2. Run the command "Show React Webview" from the Command Palette (Ctrl+Shift+P)
+3. The webview panel should appear with the React UI
+
+### Making Changes
+
+- Extension code is in the `src` directory
+- React webview code is in the `webview/src` directory
+- After making changes to the extension code, restart the extension development host
+- After making changes to the webview code, run `npm run compile:webview` and reload the webview
+
+## How it Works
+
+The extension creates a webview panel and loads the bundled React application into it. The React application can communicate with the extension using the VS Code API.
+
+### Extension to Webview Communication
+
+The extension can send messages to the webview using the `webview.postMessage()` method.
+
+### Webview to Extension Communication
+
+The webview can send messages to the extension using the `vscode.postMessage()` method, which is acquired through the `acquireVsCodeApi()` function.
+
+## Building and Packaging
+
+To build and package the extension:
+
+```bash
+npm run vscode:prepublish
+```
+
+This will compile both the extension and webview, and prepare the extension for packaging.
