@@ -8,9 +8,7 @@
         "kind": "build",
         "isDefault": true
       },
-      "problemMatcher": [
-        "$tsc"
-      ],
+      "problemMatcher": ["$tsc"],
       "label": "npm: compile",
       "detail": "Compile both extension and webview"
     },
@@ -19,9 +17,7 @@
       "script": "watch:extension",
       "group": "build",
       "isBackground": true,
-      "problemMatcher": [
-        "$tsc-watch"
-      ],
+      "problemMatcher": ["$tsc-watch"],
       "label": "npm: watch extension",
       "detail": "Watch and compile extension"
     },
@@ -30,9 +26,7 @@
       "script": "watch:webview",
       "group": "build",
       "isBackground": true,
-      "problemMatcher": [
-        "$webpack-watch"
-      ],
+      "problemMatcher": ["$esbuild-watch"],
       "label": "npm: watch webview",
       "detail": "Watch and compile webview"
     },
@@ -40,9 +34,7 @@
       "type": "npm",
       "script": "compile:extension",
       "group": "build",
-      "problemMatcher": [
-        "$tsc"
-      ],
+      "problemMatcher": ["$tsc"],
       "label": "npm: compile extension",
       "detail": "Compile extension only"
     },
@@ -50,9 +42,7 @@
       "type": "npm",
       "script": "compile:webview",
       "group": "build",
-      "problemMatcher": [
-        "$webpack"
-      ],
+      "problemMatcher": ["$esbuild"],
       "label": "npm: compile webview",
       "detail": "Compile webview only"
     }

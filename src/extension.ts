@@ -1,6 +1,21 @@
-import * as vscode from 'vscode';
-import * as path from 'path';
-import * as fs from 'fs';
+import * as vscode from "vscode";
+import * as path from "path";
+import * as fs from "fs";
+import { exec } from "child_process";
+import { promisify } from "util";
+
+const execAsync = promisify(exec);
+
+// Check if GitHub CLI is authenticated
+async function checkGitHubAuth(): Promise<boolean> {
+  try {
+    const { stdout } = await execAsync("gh auth status");
+    return stdout.includes("Logged in to");
+  } catch (error) {
+    // If the command fails, the user is not authenticated
+    return false;
+  }
+}
 
 export function activate(context: vscode.ExtensionContext) {
   console.log('Extension "roo-git" is now active!');
@@ -8,13 +23,18 @@ export function activate(context: vscode.ExtensionContext) {
   // Register the sidebar webview provider
   const provider = new RooGitViewProvider(context.extensionUri);
   context.subscriptions.push(
-    vscode.window.registerWebviewViewProvider('roo-git-view', provider)
+    vscode.window.registerWebviewViewProvider("roo-git-view", provider)
   );
 
   // Register the command to show the webview
-  const disposable = vscode.commands.registerCommand('roo-git.showWebview', () => {
-    vscode.commands.executeCommand('workbench.view.extension.roo-git-sidebar');
-  });
+  const disposable = vscode.commands.registerCommand(
+    "roo-git.showWebview",
+    () => {
+      vscode.commands.executeCommand(
+        "workbench.view.extension.roo-git-sidebar"
+      );
+    }
+  );
 
   context.subscriptions.push(disposable);
 }
@@ -25,6 +45,8 @@ export function activate(context: vscode.ExtensionContext) {
 class RooGitViewProvider implements vscode.WebviewViewProvider {
   private _view?: vscode.WebviewView;
   private _extensionUri: vscode.Uri;
+  private _authCheckInterval?: NodeJS.Timeout;
+  private _isAuthenticated: boolean = false;
 
   constructor(extensionUri: vscode.Uri) {
     this._extensionUri = extensionUri;
@@ -42,28 +64,71 @@ class RooGitViewProvider implements vscode.WebviewViewProvider {
       enableScripts: true,
       // Restrict the webview to only load resources from the extension's directory
       localResourceRoots: [
-        vscode.Uri.joinPath(this._extensionUri, 'webview/dist')
-      ]
+        vscode.Uri.joinPath(this._extensionUri, "webview/dist"),
+      ],
     };
 
     // Set the webview's initial html content
     webviewView.webview.html = this._getHtmlForWebview(webviewView.webview);
 
     // Handle messages from the webview
-    webviewView.webview.onDidReceiveMessage(message => {
+    webviewView.webview.onDidReceiveMessage((message) => {
       switch (message.command) {
-        case 'alert':
+        case "alert":
           vscode.window.showInformationMessage(message.text);
+          return;
+        case "checkAuth":
+          this._checkAndUpdateAuthStatus();
           return;
       }
     });
+
+    // Start polling for GitHub authentication status
+    this._startAuthPolling();
+  }
+
+  private async _checkAndUpdateAuthStatus(): Promise<void> {
+    const isAuthenticated = await checkGitHubAuth();
+
+    // Only send update if authentication status has changed or it's the first check
+    if (this._isAuthenticated !== isAuthenticated || this._view?.visible) {
+      this._isAuthenticated = isAuthenticated;
+
+      if (this._view) {
+        this._view.webview.postMessage({
+          command: "authStatus",
+          isAuthenticated,
+        });
+      }
+    }
+  }
+
+  private _startAuthPolling(): void {
+    // Clear any existing interval
+    if (this._authCheckInterval) {
+      clearInterval(this._authCheckInterval);
+    }
+
+    // Check immediately
+    this._checkAndUpdateAuthStatus();
+
+    // Then check every 5 seconds
+    this._authCheckInterval = setInterval(() => {
+      this._checkAndUpdateAuthStatus();
+    }, 5000);
+  }
+
+  public dispose(): void {
+    if (this._authCheckInterval) {
+      clearInterval(this._authCheckInterval);
+    }
   }
 
   private _getHtmlForWebview(webview: vscode.Webview) {
     // Get the local path to the bundled React app
-    const distPath = vscode.Uri.joinPath(this._extensionUri, 'webview', 'dist');
-    const bundlePath = vscode.Uri.joinPath(distPath, 'bundle.js');
-    
+    const distPath = vscode.Uri.joinPath(this._extensionUri, "webview", "dist");
+    const bundlePath = vscode.Uri.joinPath(distPath, "bundle.js");
+
     // And the uri we use to load this script in the webview
     const bundleUri = webview.asWebviewUri(bundlePath);
 
@@ -87,8 +152,9 @@ class RooGitViewProvider implements vscode.WebviewViewProvider {
 }
 
 function getNonce() {
-  let text = '';
-  const possible = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
+  let text = "";
+  const possible =
+    "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
   for (let i = 0; i < 32; i++) {
     text += possible.charAt(Math.floor(Math.random() * possible.length));
   }
@@ -96,4 +162,6 @@ function getNonce() {
 }
 
 // This method is called when your extension is deactivated
-export function deactivate() {}
+export function deactivate() {
+  // The provider's dispose method will be called automatically when the extension is deactivated
+}

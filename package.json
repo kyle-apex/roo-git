@@ -7,7 +7,9 @@
   "engines": {
     "vscode": "^1.60.0"
   },
-  "activationEvents": [],
+  "activationEvents": [
+    "onView:roo-git-view"
+  ],
   "contributes": {
     "viewsContainers": {
       "activitybar": [
@@ -23,7 +25,8 @@
         {
           "id": "roo-git-view",
           "name": "Roo Git",
-          "type": "webview"
+          "type": "webview",
+          "icon": "resources/icon.svg"
         }
       ]
     },
